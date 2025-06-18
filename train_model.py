@@ -5,10 +5,6 @@ from sklearn.tree import DecisionTreeRegressor
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import r2_score
-from datetime import datetime, timedelta
-import requests
-from retry_requests import retry
-import openmeteo_requests
 import numpy as np
 import jpholiday
 import joblib
@@ -59,6 +55,7 @@ base_model = DecisionTreeRegressor(max_depth=5, random_state=0)
 multi_model = MultiOutputRegressor(base_model)
 multi_model.fit(X_train, y_train)
 
+"""
 # 予測
 y_pred = multi_model.predict(X_test)
 # 評価表示
@@ -69,78 +66,7 @@ for i, col in enumerate(target_columns):
     rmse = np.sqrt(mean_squared_error(y_test.iloc[:, i], y_pred[:, i]))
     print(f"{col}: R² = {r2:.3f}, RMSE = {rmse:.2f}")
 
-
-
-# ----------天気APIを取得する
-retry_session = retry(requests.Session(), retries=5, backoff_factor=0.2)
-openmeteo     = openmeteo_requests.Client(session=retry_session)
-tz        = "Asia/Tokyo"
-today_jst = datetime.now().astimezone().date()
-date_list = []
-for i in range(8):
-  date_list.append(today_jst + timedelta(days=i-1))
-
-url = "https://api.open-meteo.com/v1/forecast"
-params = {
-    "latitude"   : 35.658,
-    "longitude"  : 139.778,
-    "daily"      : ["weather_code", "temperature_2m_mean", "precipitation_sum"],
-    "timezone"   : tz,
-    "past_days": 1,
-    "forecast_days":7
-}
-
-resp   = openmeteo.weather_api(url, params=params)[0]
-daily  = resp.Daily()
-weather_code = daily.Variables(0).ValuesAsNumpy()
-temperature__2m_mean = daily.Variables(1).ValuesAsNumpy()
-precipitation_sum = daily.Variables(2).ValuesAsNumpy()
-
-forecast = pd.DataFrame({
-    "date":date_list,
-    "weather_code":weather_code,
-    "temperature_2m_mean":temperature__2m_mean,
-    "precipitation_sum":precipitation_sum
-})
-
-forecast["weather_code"] = forecast["weather_code"].astype(int)
-forecast["temperature_2m_mean"] = (forecast["temperature_2m_mean"].round(0).astype(int))
-forecast["sunny or not"] = (forecast["weather_code"] < 3).astype(int)
-forecast['date'] = pd.to_datetime(forecast['date'])
-forecast['is_friday'] = (forecast['date'].dt.weekday == 4).astype(int)
-forecast['is_holiday'] = forecast['date'].apply(lambda x: int(jpholiday.is_holiday(x)))
-
-pd.set_option('display.expand_frame_repr', False)
-pd.set_option('display.max_columns', None)
-pd.set_option('display.max_colwidth', None)
-print(forecast)
-
-#予測天気データをinputする、予測結果をoutput
-visitors_default = X_train['visitors'].mean()
-
-def predict_sales(sample_dict):
-    sample_dict = sample_dict.copy()
-    sample_dict.setdefault('visitors', visitors_default)
-    df = pd.DataFrame([sample_dict])[X_train.columns]
-    pred = multi_model.predict(df)[0]
-    pred = [round(float(x), 2) for x in pred]
-    return dict(zip(y_train.columns, pred))
-
-for _,row in forecast.iterrows():
-  row_dict = row.to_dict()
-  input_data = {
-    "visitors":visitors_default,
-    "temperature_2m_mean (°C)": row_dict["temperature_2m_mean"],
-    "precipitation_sum (mm)": row_dict["precipitation_sum"],
-    "sunny or not":row_dict["sunny or not"],
-    "is_friday":row_dict["is_friday"],
-    "is_holiday":row_dict["is_holiday"]
-  }
-
-  result = predict_sales(input_data)
-  print(f"=== {row_dict['date']}の予測")
-  print(json.dumps(result,ensure_ascii=False,indent=2))
-# ------------
+"""
 
 # 保存
 joblib.dump(multi_model, "demand_prediction/model.pkl")
