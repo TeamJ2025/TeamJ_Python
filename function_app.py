@@ -13,7 +13,7 @@ import joblib
 multi_model = joblib.load("demand_prediction/model.pkl")
 X_columns = joblib.load("demand_prediction/x_columns.pkl")
 
-# ----------天気APIを取得する
+# 天気APIを取得する
 retry_session = retry(requests.Session(), retries=5, backoff_factor=0.2)
 openmeteo     = openmeteo_requests.Client(session=retry_session)
 tz        = "Asia/Tokyo"
@@ -57,7 +57,7 @@ pd.set_option('display.max_columns', None)
 pd.set_option('display.max_colwidth', None)
 print(forecast)
 
-#予測天気データをinputする、予測結果をoutput
+# 予測天気データをinput、予測結果をoutputし、WebページにPOSTリクエストを送る
 visitors_default = 20 # 来店数を20名とおく（ダミーデータ）
 
 def predict_sales(sample_dict):
@@ -75,6 +75,8 @@ def predict_sales(sample_dict):
         "fruit_beer_bottles"
     ], pred))
 
+url = "http://localhost:7071/api/http_trigger_teamJ"
+
 for _,row in forecast.iterrows():
   row_dict = row.to_dict()
   input_data = {
@@ -87,8 +89,16 @@ for _,row in forecast.iterrows():
   }
 
   result = predict_sales(input_data)
+  result_with_date = {"date": str(row_dict["date"]), "prediction": result}
   print(f"=== {row_dict['date']}の予測")
   print(json.dumps(result,ensure_ascii=False,indent=2))
+
+  # POSTリクエストで結果を送信
+  try:
+    response = requests.post(url, json=result_with_date)
+    print(f"POST結果: {response.status_code} - {response.text}")
+  except Exception as e:
+    print(f"POST送信に失敗: {e}")
 # ------------
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
